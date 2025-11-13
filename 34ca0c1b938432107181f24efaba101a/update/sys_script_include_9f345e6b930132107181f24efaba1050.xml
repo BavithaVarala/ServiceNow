@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_script_include">
+    <sys_script_include action="INSERT_OR_UPDATE">
+        <access>public</access>
+        <active>true</active>
+        <api_name>x_801257_ets_trans.EAPStoryAutoCreateUtil</api_name>
+        <caller_access/>
+        <client_callable>false</client_callable>
+        <description/>
+        <mobile_callable>false</mobile_callable>
+        <name>EAPStoryAutoCreateUtil</name>
+        <sandbox_callable>false</sandbox_callable>
+        <script><![CDATA[/**
+ * Utility Script Include for EAP Story Auto-Creation
+ * 
+ * USAGE:
+ *   - isAssignmentGroupEligible(current)  // Check if assignment group is eligible
+ *   - createEAPStory(current)             // Create EAP story from current task
+ * 
+ */
+var EAPStoryAutoCreateUtil = Class.create();
+EAPStoryAutoCreateUtil.prototype = {
+
+    initialize: function() {
+        this.GROUP_BACKLOG_MAPPING_PROPERTY = 'x_thtmi_om_spm.eap.story.auto_create.group_backlog_mapping';
+        this.VERBOSITY = gs.getProperty('x_thtmi_om_spm.logging.verbosity', 'false');
+    },
+
+    /**
+     * Centralized logging function with consistent prefix
+     * Only logs if verbosity is enabled via system property
+     * @param {String} message - Message to log
+     */
+    _log: function(message) {
+        if (this.VERBOSITY == 'Debug') {
+            gs.debug('##Triage: ' + message);
+        }
+    },
+
+    /**
+     * Check if assignment group and optionally catalog item are eligible for EAP story auto-creation
+     * Used as business rule condition - checks assignment group and catalog item per group configuration
+     * @param {GlideRecord} taskRecord - The current SC Task GlideRecord (from business rule)
+     * @returns {Boolean} - True if assignment group (and catalog item if required) is eligible
+     */
+    isAssignmentGroupEligible: function(taskRecord) {
+        if (!taskRecord || !taskRecord.isValidRecord()) {
+            this._log('Invalid task record provided - returning false');
+            return false;
+        }
+
+        var assignmentGroupSysId = taskRecord.assignment_group.toString();
+        var catalogItemSysId = taskRecord.cat_item.toString();
+        this._log('Checking eligibility for assignment group: ' + assignmentGroupSysId + ', catalog item: ' + catalogItemSysId);
+
+        // Get the group configuration from the mapping
+        var groupConfig = this._getGroupConfiguration(assignmentGroupSysId);
+        if (!groupConfig) {
+            this._log('Assignment group not configured for auto-creation: ' + assignmentGroupSysId);
+            return false;
+        }
+
+        // Check catalog item requirement if configured for this group
+        if (groupConfig.catalog_items && groupConfig.catalog_items.length > 0) {
+            this._log('Catalog item filtering required for this assignment group');
+            if (!catalogItemSysId) {
+                this._log('No catalog item on task, but filtering is required - returning false');
+                return false;
+            }
+
+            var catalogItemMatch = groupConfig.catalog_items.indexOf(catalogItemSysId) !== -1;
+            this._log('Catalog item match result: ' + catalogItemMatch + ' (required items: ' + groupConfig.catalog_items.join(',') + ')');
+
+            if (!catalogItemMatch) {
+                return false;
+            }
+        } else {
+            this._log('No catalog item filtering required for this assignment group');
+        }
+
+        this._log('Assignment group eligibility check passed');
+        return true;
+    },
+
+
+    /**
+     * Gets the configuration object for a specific assignment group
+     * @param {String} assignmentGroupSysId - Sys ID of the assignment group
+     * @returns {Object} - Configuration object with backlog_definition and catalog_items, or null if not found
+     */
+    _getGroupConfiguration: function(assignmentGroupSysId) {
+        this._log('Getting configuration for assignment group: ' + assignmentGroupSysId);
+
+        var mappingJson = gs.getProperty(this.GROUP_BACKLOG_MAPPING_PROPERTY, '');
+        if (!mappingJson) {
+            this._log('No group-backlog mapping configured in system property: ' + this.GROUP_BACKLOG_MAPPING_PROPERTY);
+            return null;
+        }
+
+        try {
+            var mapping = JSON.parse(mappingJson);
+            var groupConfig = mapping[assignmentGroupSysId];
+
+            if (!groupConfig) {
+                this._log('No configuration found for assignment group: ' + assignmentGroupSysId);
+                return null;
+            }
+			
+
+            this._log('Configuration for group ' + assignmentGroupSysId + ': backlog=' + groupConfig.backlog_definition +
+                ', catalog_items=' + (groupConfig.catalog_items ? groupConfig.catalog_items.join(',') : 'none'));
+            return groupConfig;
+        } catch (e) {
+            this._log('Error parsing group-backlog mapping JSON: ' + e.message);
+            return null;
+        }
+    },
+
+    /**
+     * Gets the backlog definition for a specific assignment group
+     * @param {String} assignmentGroupSysId - Sys ID of the assignment group
+     * @returns {String} - Backlog definition sys_id or empty string if not found
+     */
+    _getBacklogDefinitionForGroup: function(assignmentGroupSysId) {
+        var groupConfig = this._getGroupConfiguration(assignmentGroupSysId);
+        return groupConfig ? groupConfig.backlog_definition : '';
+    },
+
+    /**
+     * Creates EAP Story from SC Task using existing Ajax Processor
+     * @param {GlideRecord} taskRecord - The current SC Task GlideRecord (from business rule)
+     * @returns {Boolean} - True if story creation was successful
+     */
+    createEAPStory: function(taskRecord) {
+        if (!taskRecord || !taskRecord.isValidRecord()) {
+            this._log('Invalid task record provided - cannot create story');
+            return false;
+        }
+
+        var taskSysId = taskRecord.sys_id.toString();
+        this._log('Creating EAP Story for task: ' + taskSysId);
+
+        var assignmentGroupSysId = taskRecord.assignment_group.toString();
+        var backlogDefinition = this._getBacklogDefinitionForGroup(assignmentGroupSysId);
+
+        if (!backlogDefinition) {
+            this._log('No backlog definition found for assignment group: ' + assignmentGroupSysId);
+            return false;
+        }
+
+        try {
+            this._log('Creating story using proper Ajax Processor pattern');
+            this._log('- Task ID: ' + taskSysId);
+            this._log('- Backlog Definition: ' + backlogDefinition);
+
+            // Call the Ajax Processor method directly with proper parameters
+            var processor = new Agile_Multi_Task_AjaxProcessor();
+
+            // Set up the request object that AbstractAjaxProcessor expects
+            processor.request = {
+                getParameter: function(name) {
+                    var params = {
+                        'sysparm_records': taskSysId,
+                        'sysparm_table_name': 'sc_task',
+                        'sysparm_backlog_definition': backlogDefinition
+                    };
+                    return params[name];
+                }
+            };
+
+            this._log('About to call addRecordsToBacklog()...');
+            var result = processor.addRecordsToBacklog();
+            this._log('Story creation result: ' + result);
+
+            return result === 'true';
+        } catch (e) {
+            this._log('Error creating EAP story: ' + e.message);
+            this._log('Error stack: ' + e.stack);
+            return false;
+        }
+    },
+
+
+    type: 'EAPStoryAutoCreateUtil'
+};
+]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2025-11-12 17:50:58</sys_created_on>
+        <sys_id>9f345e6b930132107181f24efaba1050</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_name>EAPStoryAutoCreateUtil</sys_name>
+        <sys_package display_value="ETS Transformation" source="x_801257_ets_trans">34ca0c1b938432107181f24efaba101a</sys_package>
+        <sys_policy>read</sys_policy>
+        <sys_scope display_value="ETS Transformation">34ca0c1b938432107181f24efaba101a</sys_scope>
+        <sys_update_name>sys_script_include_9f345e6b930132107181f24efaba1050</sys_update_name>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2025-11-12 17:50:58</sys_updated_on>
+    </sys_script_include>
+</record_update>

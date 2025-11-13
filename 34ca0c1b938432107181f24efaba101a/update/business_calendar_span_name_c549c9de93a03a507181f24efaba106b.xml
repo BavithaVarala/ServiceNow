@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="business_calendar_span_name">
+    <business_calendar_span_name action="INSERT_OR_UPDATE">
+        <calendar display_value="Sprint">d7c104cc77c23110cfbdaba9cf5a99f8</calendar>
+        <label>Sprint 8</label>
+        <long_name>Sprint 8</long_name>
+        <short_name>Sprint 8</short_name>
+        <sys_class_name>business_calendar_span_name</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2025-10-14 18:38:58</sys_created_on>
+        <sys_id>c549c9de93a03a507181f24efaba106b</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_name>Sprint 8</sys_name>
+        <sys_package display_value="ETS Transformation" source="x_801257_ets_trans">34ca0c1b938432107181f24efaba101a</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="ETS Transformation">34ca0c1b938432107181f24efaba101a</sys_scope>
+        <sys_update_name>business_calendar_span_name_c549c9de93a03a507181f24efaba106b</sys_update_name>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2025-10-14 18:38:58</sys_updated_on>
+    </business_calendar_span_name>
+</record_update>
